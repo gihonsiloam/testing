@@ -1,1 +1,1425 @@
-# testing
+# Artifact Skripsi
+
+## Playbook Hardening Rocky Linux 9
+
+```YAML
+- name: Rocky Linux System Hardening Playbook
+  hosts: all
+  become: yes
+
+  tasks:
+    # /tmp
+    - name: Check if /tmp is already mounted
+      command: mountpoint /tmp
+      register: tmp_mount
+      ignore_errors: yes
+
+    # 1.1.2.3 Ensure noexec option set on /tmp partition
+    # 1.1.2.4 Ensure nosuid option set on /tmp partition
+    # Note: This single task configures /tmp as a tmpfs filesystem, which implicitly meets the 'separate partition' goal of 1.1.2 and applies nodev, nosuid, and noexec.
+    - name: Ensure /tmp is mounted with nodev, nosuid, noexec
+      mount:
+        path: /tmp
+        src: tmpfs
+        fstype: tmpfs
+        opts: defaults,nodev,nosuid,noexec
+        state: mounted
+      when: tmp_mount.rc != 0
+
+    # 1.1.2.3 Ensure noexec option set on /tmp partition
+    # 1.1.2.4 Ensure nosuid option set on /tmp partition
+    - name: Ensure /tmp is persistent in /etc/fstab
+      mount:
+        path: /tmp
+        src: tmpfs
+        fstype: tmpfs
+        opts: defaults,nodev,nosuid,noexec
+        state: present
+
+    # /var
+    # 1.1.3.1 Ensure separate partition exists for /var
+    - name: Check if /var is on a separate partition
+      command: findmnt --kernel /var
+      register: var_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Warn if /var is not a separate partition
+      debug:
+        msg: "/var is not on a separate partition, skipping mount option hardening."
+      when: var_mount.stdout.find('/dev') == -1
+
+    # 1.1.3.2 Ensure nodev option set on /var partition
+    # 1.1.3.3 Ensure nosuid option set on /var partition (Note: Your opts only include nodev)
+    - name: Harden /var partition if it exists
+      block:
+        # Step 1: Ensure 'nodev' option is in /etc/fstab for persistence
+        - name: Ensure nodev option is set for /var in /etc/fstab
+          ansible.builtin.lineinfile:
+            path: /etc/fstab
+            # This regex finds the /var line and adds ',nodev' if it's not already there
+            regexp: '^(?!\S+,.*\bnodev\b)(\S+\s+/var\s+\S+\s+)(\S+.*)$'
+            line: '\1\2,nodev'
+            backrefs: yes
+          register: fstab_var_change
+
+        # Step 2: Remount /var to apply the change immediately, but only if fstab was changed
+        - name: Apply new mount options to /var
+          command: mount -o remount /var
+          when: fstab_var_change.changed
+
+      when: var_mount.stdout.find('/dev') != -1
+
+    # /var/tmp
+    # 1.1.4.1 Ensure separate partition exists for /var/tmp
+    - name: Check if /var/tmp is on a separate partition
+      command: findmnt --kernel /var/tmp
+      register: vartmp_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Warn if /var/tmp is not a separate partition
+      debug:
+        msg: "/var/tmp is not on a separate partition, skipping mount option hardening."
+      when: vartmp_mount.stdout.find('/dev') == -1
+
+    # 1.1.4.2 Ensure noexec option set on /var/tmp partition
+    # 1.1.4.3 Ensure nosuid option set on /var/tmp partition
+    # 1.1.4.4 Ensure nodev option set on /var/tmp partition
+    - name: Harden /var/tmp partition if it exists
+      block:
+        # Step 1: Ensure 'nodev,nosuid,noexec' options are in /etc/fstab
+        - name: Ensure hardening options are set for /var/tmp in /etc/fstab
+          ansible.builtin.lineinfile:
+            path: /etc/fstab
+            # This regex finds the /var/tmp line and adds the options if they are not all present
+            regexp: '^(?!\S+,.*\b(nodev|nosuid|noexec)\b)(\S+\s+/var/tmp\s+\S+\s+)(\S+.*)$'
+            line: '\1\2,nodev,nosuid,noexec'
+            backrefs: yes
+          register: fstab_vartmp_change
+
+        # Step 2: Remount /var/tmp to apply the change immediately, but only if fstab was changed
+        - name: Apply new mount options to /var/tmp
+          ansible.builtin.command: mount -o remount /var/tmp
+          when: fstab_vartmp_change.changed
+
+      when: vartmp_mount.stdout.find('/dev') != -1
+    # /var/log
+    # 1.1.5.1 Ensure separate partition exists for /var/log
+    - name: Check if /var/log is on a separate partition
+      command: findmnt --kernel /var/log
+      register: varlog_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Warn if /var/log is not a separate partition
+      debug:
+        msg: "/var/log is not on a separate partition, skipping mount option hardening."
+      when: varlog_mount.stdout.find('/dev') == -1
+
+    # 1.1.5.2 Ensure nodev option set on /var/log partition
+    # 1.1.5.3 Ensure noexec option set on /var/log partition
+    # 1.1.5.4 Ensure nosuid option set on /var/log partition
+    - name: Harden /var/log partition if it exists
+      block:
+        # Step 1: Ensure 'nodev,nosuid,noexec' options are in /etc/fstab
+        - name: Ensure hardening options are set for /var/log in /etc/fstab
+          ansible.builtin.lineinfile:
+            path: /etc/fstab
+            # This regex finds the /var/log line and adds the options if not present
+            regexp: '^(?!\S+,.*\b(nodev|nosuid|noexec)\b)(\S+\s+/var/log\s+\S+\s+)(\S+.*)$'
+            line: '\1\2,nodev,nosuid,noexec'
+            backrefs: yes
+          register: fstab_varlog_change
+
+        # Step 2: Remount /var/log to apply the change immediately, but only if fstab was changed
+        - name: Apply new mount options to /var/log
+          ansible.builtin.command: mount -o remount /var/log
+          when: fstab_varlog_change.changed
+
+      when: varlog_mount.stdout.find('/dev') != -1
+
+    # /var/log/audit
+    # 1.1.6.1 Ensure separate partition exists for /var/log/audit
+    - name: Check if /var/log/audit is on a separate partition
+      command: findmnt --kernel /var/log/audit
+      register: auditlog_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Warn if /var/log/audit is not a separate partition
+      debug:
+        msg: "/var/log/audit is not on a separate partition, skipping mount option hardening."
+      when: auditlog_mount.stdout.find('/dev') == -1
+
+    # 1.1.6.2 Ensure noexec option set on /var/log/audit partition
+    # 1.1.6.3 Ensure nodev option set on /var/log/audit partition
+    # 1.1.6.4 Ensure nosuid option set on /var/log/audit partition
+    - name: Harden /var/log/audit partition if it exists
+      block:
+        # Step 1: Ensure 'nodev,nosuid,noexec' options are in /etc/fstab
+        - name: Ensure hardening options are set for /var/log/audit in /etc/fstab
+          ansible.builtin.lineinfile:
+            path: /etc/fstab
+            # This regex finds the /var/log/audit line and adds the options if not present
+            regexp: '^(?!\S+,.*\b(nodev|nosuid|noexec)\b)(\S+\s+/var/log/audit\s+\S+\s+)(\S+.*)$'
+            line: '\1\2,nodev,nosuid,noexec'
+            backrefs: yes
+          register: fstab_auditlog_change
+
+        # Step 2: Remount /var/log/audit to apply the change, but only if fstab was changed
+        - name: Apply new mount options to /var/log/audit
+          ansible.builtin.command: mount -o remount /var/log/audit
+          when: fstab_auditlog_change.changed
+
+      when: auditlog_mount.stdout.find('/dev') != -1
+
+    # /home
+    # 1.1.7.1 Ensure separate partition exists for /home
+    - name: Check if /home is on a separate partition
+      command: findmnt --kernel /home
+      register: home_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Warn if /home is not a separate partition
+      debug:
+        msg: "/home is not on a separate partition, skipping mount option hardening."
+      when: home_mount.stdout.find('/dev') == -1
+
+    # 1.1.7.2 Ensure nodev option set on /home partition
+    # 1.1.7.3 Ensure nosuid option set on /home partition
+    - name: Harden /home partition if it exists
+      block:
+        # Step 1: Ensure 'nodev,nosuid' options are in /etc/fstab
+        - name: Ensure hardening options are set for /home in /etc/fstab
+          ansible.builtin.lineinfile:
+            path: /etc/fstab
+            # This regex finds the /home line and adds the options if not present
+            regexp: '^(?!\S+,.*\b(nodev|nosuid)\b)(\S+\s+/home\s+\S+\s+)(\S+.*)$'
+            line: '\1\2,nodev,nosuid'
+            backrefs: yes
+          register: fstab_home_change
+    
+        # Step 2: Remount /home to apply the change, but only if fstab was changed
+        - name: Apply new mount options to /home
+          ansible.builtin.command: mount -o remount /home
+          when: fstab_home_change.changed
+    
+      when: home_mount.stdout.find('/dev') != -1
+
+    # /dev/shm
+    # 1.1.8.2 Ensure nodev option set on /dev/shm partition
+    # 1.1.8.3 Ensure noexec option set on /dev/shm partition
+    # 1.1.8.4 Ensure nosuid option set on /dev/shm partition
+    - name: Ensure /dev/shm is mounted with nodev, nosuid, noexec
+      mount:
+        path: /dev/shm
+        src: tmpfs
+        fstype: tmpfs
+        opts: defaults,nodev,nosuid,noexec
+        state: mounted
+
+    # 1.1.8.2 Ensure nodev option set on /dev/shm partition
+    # 1.1.8.3 Ensure noexec option set on /dev/shm partition
+    # 1.1.8.4 Ensure nosuid option set on /dev/shm partition
+    - name: Ensure /dev/shm is persistent in /etc/fstab
+      mount:
+        path: /dev/shm
+        src: tmpfs
+        fstype: tmpfs
+        opts: defaults,nodev,nosuid,noexec
+        state: present
+
+    # 1.1.9 Disable USB Storage (and other filesystems)
+    - name: Disable unused filesystem kernel modules
+      lineinfile:
+        path: /etc/modprobe.d/CIS.conf
+        line: "install {{ item }} /bin/true"
+        create: yes
+      loop:
+        - cramfs
+        - freevxfs
+        - hfs
+        - hfsplus
+        - jffs2
+        - squashfs
+        - udf
+        - usb-storage
+    
+    # 1.2.1 Ensure GPG keys are configured
+    - name: Import Rocky Linux GPG key
+      rpm_key:
+        state: present
+        key: https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-rockyofficial
+
+    # 1.2.2 Ensure gpgcheck is globally activated
+    - name: Ensure gpgcheck is enabled in dnf.conf
+      lineinfile:
+        path: /etc/dnf/dnf.conf
+        insertafter: EOF
+        regexp: "^gpgcheck"
+        line: "gpgcheck=1"
+        create: yes
+
+    # 1.2.3 Ensure package manager repositories are configured
+    - name: Verify that repository configuration files exist
+      find:
+        paths: /etc/yum.repos.d/
+        patterns: '*.repo'
+      register: repo_files
+      failed_when: repo_files.matched == 0
+
+    # 1.2.4 Ensure repo_gpgcheck is globally activated
+    - name: Enable repo_gpgcheck for all repositories
+      lineinfile:
+        path: /etc/dnf/dnf.conf
+        regexp: '^repo_gpgcheck'
+        line: 'repo_gpgcheck=1'
+        state: present
+
+    # 1.4.1 Ensure bootloader password is set
+    - name: "Manual Action: Ensure bootloader password is set"
+      debug:
+        msg: "Cannot automate bootloader password setting. Please run 'grub2-setpassword' manually on the console."
+
+    # 1.4.2 Ensure permissions on bootloader config are configured
+    - name: Set permissions on bootloader config files
+      file:
+        path: "{{ item }}"
+        owner: root
+        group: root
+        mode: '0600'
+      loop:
+        - /boot/grub2/grub.cfg
+        - /boot/efi/EFI/rocky/grub.cfg
+      ignore_errors: yes
+
+    ### SELINUX ###
+    # 1.6.1.1 Ensure SELinux is installed
+    - name: Ensure SELinux base packages are installed
+      package:
+        name:
+          - libselinux
+          - policycoreutils
+        state: present
+
+    # 1.6.1.2 Ensure SELinux is not disabled in bootloader configuration
+    - name: Ensure SELinux is not disabled in grub
+      lineinfile:
+        path: /etc/default/grub
+        state: absent
+        regexp: 'selinux=0'
+
+    # 1.6.1.3 Ensure SELinux policy is configured
+    - name: Ensure SELinux policy is set to targeted
+      lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUXTYPE='
+        line: 'SELINUXTYPE=targeted'
+
+    # 1.6.1.4 Ensure the SELinux mode is not disabled
+    - name: Ensure SELinux enforcing is not disabled in grub
+      lineinfile:
+        path: /etc/default/grub
+        state: absent
+        regexp: 'enforcing=0'
+
+    # 1.6.1.5 Ensure the SELinux mode is enforcing
+    - name: Set SELinux to enforcing mode
+      selinux:
+        policy: targeted
+        state: enforcing
+
+    # 1.6.1.6 Ensure no unconfined services exist
+    - name: Get list of unconfined processes
+      shell: ps -eZ | grep unconfined | wc -l
+      register: unconfined_count
+      changed_when: false
+
+    - name: Warn if unconfined processes exist
+      debug:
+        msg: "There are {{ unconfined_count.stdout }} unconfined processes. Manual policy adjustments may be required."
+      when: unconfined_count.stdout|int > 0
+
+    # 1.7.4 Ensure permissions on /etc/motd are configured
+    - name: Set permissions on /etc/motd
+      file:
+        path: /etc/motd
+        owner: root
+        group: root
+        mode: '0644'
+
+    # 1.7.5 Ensure permissions on /etc/issue are configured
+    - name: Set local login legal banner in /etc/issue
+      copy:
+        dest: /etc/issue
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          WARNING: This system is for the use of authorized users only.
+          All activities on this system are monitored and recorded.
+
+    # 1.7.6 Ensure permissions on /etc/issue.net are configured
+    - name: Set remote login legal banner in /etc/issue.net
+      copy:
+        dest: /etc/issue.net
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          WARNING: This system is for the use of authorized users only.
+          Unauthorized use is prohibited.
+
+    # 1.8.4 to 1.8.9 GDM Settings
+    # Note: These tasks are for systems with GNOME Desktop installed.
+    - name: Configure GDM screen lock settings
+      dconf:
+        key: "/org/gnome/desktop/screensaver/{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+      loop:
+        - { key: 'lock-delay', value: 'uint32 5' }
+        - { key: 'idle-activation-enabled', value: 'true' }
+      ignore_errors: yes
+
+    - name: Configure GDM automatic mounting settings
+      dconf:
+        key: "/org/gnome/desktop/media-handling/{{ item.key }}"
+        value: "false"
+        state: present
+      loop:
+        - { key: 'automount' }
+        - { key: 'automount-open' }
+      ignore_errors: yes
+
+    - name: Lock down GDM settings
+      copy:
+        dest: "/etc/dconf/db/gdm.d/locks/00-cis-locks"
+        content: |
+          /org/gnome/desktop/screensaver/lock-delay
+          /org/gnome/desktop/screensaver/idle-activation-enabled
+          /org/gnome/desktop/media-handling/automount
+          /org/gnome/desktop/media-handling/automount-open
+      notify: update dconf
+      ignore_errors: yes
+
+    ### OS & PACKAGE HARDENING ###
+    # 1.9 Ensure updates, patches, and additional security software are installed
+    - name: Update all packages to the latest version
+      dnf:
+        name: "*"
+        state: latest
+        update_cache: yes
+
+    ### FIREWALLD + NFTABLES ###
+    # 3.4.1.1 Ensure nftables is installed (firewalld uses nftables backend)
+    - name: Ensure firewalld is installed
+      package:
+        name: firewalld
+        state: present
+
+    # 3.4.1.2 Ensure a single firewall configuration utility is in use
+    - name: Ensure firewalld is enabled and running
+      service:
+        name: firewalld
+        state: started
+        enabled: yes
+
+    # 3.4.2.4 Ensure host based firewall loopback traffic is configured
+    - name: Allow loopback traffic
+      firewalld:
+        zone: public
+        interface: lo
+        state: enabled
+        permanent: yes
+
+    # 3.4.2.5 Ensure firewalld drops unnecessary services and ports
+    # Note: By default, firewalld drops all unconfigured ports. This task removes unneeded default services.
+    - name: Remove unnecessary default services from firewall
+      firewalld:
+        service: "{{ item }}"
+        state: disabled
+        permanent: yes
+      loop:
+        - cockpit
+        - dhcpv6-client
+      notify: reload firewalld
+
+    # 3.4.2.6 Ensure nftables established connections are configured
+    - name: Allow established and related connections
+      firewalld:
+        zone: public
+        service: ssh # Example: assuming SSH is needed
+        state: enabled
+        permanent: yes
+      notify: reload firewalld
+
+    # 3.4.2.7 Ensure nftables default deny firewall policy
+    - name: Set default zone policy to DROP
+      firewalld:
+        zone: public
+        target: DROP
+        state: enabled
+        permanent: yes
+      notify: reload firewalld
+
+    ### AUDITD ADDITIONS ###
+    # 4.1.1.1 Ensure auditd is installed
+    - name: Install auditd
+      dnf:
+        name: audit
+        state: present
+    
+    # 4.1.1.2 Ensure auditing for processes that start prior to auditd is enabled
+    - name: Ensure auditing starts before services
+      lineinfile:
+        path: /etc/default/grub
+        regexp: '^(GRUB_CMDLINE_LINUX=")(?!.*\baudit=1\b)(.*)(")$'
+        line: '\1\2 audit=1\3'
+        backrefs: yes
+      notify: update grub config
+
+    # 4.1.1.3 Ensure audit_backlog_limit is sufficient
+    - name: Set audit_backlog_limit in grub
+      lineinfile:
+        path: /etc/default/grub
+        regexp: '^(GRUB_CMDLINE_LINUX=")(?!.*\baudit_backlog_limit=\b)(.*)(")$'
+        line: '\1\2 audit_backlog_limit=8192\3'
+        backrefs: yes
+      notify: update grub config
+
+    # 4.1.1.4 Ensure auditd service is enabled
+    - name: Ensure auditd is running and enabled
+      service:
+        name: auditd
+        state: started
+        enabled: yes
+    
+    # 4.1.2.1 Ensure audit log storage size is configured
+    - name: Set audit log max file size
+      lineinfile:
+        path: /etc/audit/auditd.conf
+        regexp: '^max_log_file '
+        line: 'max_log_file = 8'
+
+    # 4.1.2.2 Ensure audit logs are not automatically deleted
+    - name: Ensure audit logs not auto-deleted
+      lineinfile:
+        path: /etc/audit/auditd.conf
+        regexp: "^max_log_file_action"
+        line: "max_log_file_action = keep_logs"
+
+    # 4.1.2.3 Ensure system is disabled when audit logs are full
+    - name: Ensure audit log full action is triggered
+      lineinfile:
+        path: /etc/audit/auditd.conf
+        regexp: "^admin_space_left_action"
+        line: "admin_space_left_action = halt"
+
+    # 4.1.3.15 to 4.1.3.18 - Audit various commands
+    - name: Configure audit rules for various commands
+      blockinfile:
+        path: /etc/audit/rules.d/50-cis-cmds.rules
+        create: yes
+        block: |
+          -w /usr/bin/chcon -p x -k perm_mod
+          -w /usr/bin/setfacl -p x -k perm_mod
+          -w /usr/bin/chacl -p x -k perm_mod
+          -w /usr/sbin/usermod -p x -k usermod
+
+    # 4.1.3.20 Ensure the audit configuration is immutable
+    - name: Make audit configuration immutable
+      lineinfile:
+        path: /etc/audit/rules.d/99-finalize.rules
+        line: "-e 2"
+        create: yes
+
+    # 4.1.4.1 to 4.1.4.10 Audit file permissions
+    - name: Set correct permissions for audit files and directories
+      file:
+        path: "{{ item.path }}"
+        state: "{{ item.state | default('file') }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: '/var/log/audit', state: 'directory', mode: '0750' }
+        - { path: '/etc/audit/auditd.conf', mode: '0640' }
+        - { path: '/etc/audit/rules.d/', state: 'directory', mode: '0750' }
+        - { path: '/usr/sbin/auditctl', mode: '0755' }
+        - { path: '/usr/sbin/auditd', mode: '0755' }
+
+    # 4.2.1.1 Ensure rsyslog is installed
+    - name: Install rsyslog
+      package:
+        name: rsyslog
+        state: present
+
+    # 4.2.1.2 Ensure rsyslog service is enabled
+    - name: Enable rsyslog service
+      service:
+        name: rsyslog
+        enabled: yes
+        state: started
+
+    # 4.2.1.3 Ensure journald is configured to send logs to rsyslog
+    - name: Ensure journald forwards to rsyslog
+      lineinfile:
+        path: /etc/systemd/journald.conf
+        regexp: '^#?ForwardToSyslog='
+        line: 'ForwardToSyslog=yes'
+      notify: restart journald
+    
+    # 4.2.1.4 Ensure rsyslog default file permissions are configured
+    - name: Ensure rsyslog file permissions
+      lineinfile:
+        path: /etc/rsyslog.conf
+        regexp: '^\$FileCreateMode'
+        line: "$FileCreateMode 0640"
+      notify: restart rsyslog
+
+    # 4.2.1.5 Ensure logging is configured
+    - name: Ensure default rsyslog configuration file exists
+      stat:
+        path: /etc/rsyslog.conf
+      register: rsyslog_conf
+      failed_when: not rsyslog_conf.stat.exists
+
+    # 4.2.1.6 Ensure rsyslog is configured to send logs to a remote log host
+    - name: Configure rsyslog remote forwarding
+      lineinfile:
+        path: /etc/rsyslog.d/50-default.conf
+        line: "*.* @@loghost.example.com"
+        create: yes
+      notify: restart rsyslog
+
+    # 4.2.1.7 Ensure rsyslog is not configured to receive logs from a remote client
+    - name: Disable rsyslog from receiving logs from remote clients
+      lineinfile:
+        path: /etc/rsyslog.conf
+        regexp: '^\$ModLoad imtcp'
+        line: '#$ModLoad imtcp'
+      notify: restart rsyslog
+
+    ### JOURNALD CONFIGURATION ###
+    # 4.2.2.1.1 Ensure systemd-journal-remote is installed
+    - name: Ensure systemd-journal-remote installed
+      package:
+        name: systemd-journal-remote
+        state: present
+    
+    # 4.2.2.1.2 Ensure systemd-journal-remote is configured
+    - name: Verify systemd-journal-remote configuration exists
+      stat:
+        path: /etc/systemd/journal-remote.conf
+      register: journal_remote_conf
+      failed_when: not journal_remote_conf.stat.exists
+
+    # 4.2.2.1.3 Ensure systemd-journal-remote is enabled
+    - name: Enable systemd-journal-remote
+      service:
+        name: systemd-journal-remote.socket
+        state: started
+        enabled: yes
+
+    # 4.2.2.1.4 Ensure journald is not configured to receive logs from a remote client
+    - name: Ensure journald not listening for remote logs
+      lineinfile:
+        path: /etc/systemd/journald.conf
+        regexp: '^#?ListenStream='
+        line: '#ListenStream='
+      notify: restart journald
+
+    # 4.2.2.2 Ensure journald service is enabled
+    - name: Ensure journald service is enabled
+      service:
+        name: systemd-journald
+        enabled: yes
+        state: started
+
+    # 4.2.2.3 Ensure journald is configured to compress large log files
+    - name: Ensure journald compresses logs
+      lineinfile:
+        path: /etc/systemd/journald.conf
+        regexp: '^#?Compress='
+        line: 'Compress=yes'
+      notify: restart journald
+
+    # 4.2.2.4 Ensure journald is configured to write logfiles to persistent disk
+    - name: Ensure journald logs persist
+      lineinfile:
+        path: /etc/systemd/journald.conf
+        regexp: '^#?Storage='
+        line: 'Storage=persistent'
+      notify: restart journald
+
+    # 4.2.2.5 Ensure journald is not configured to send logs to rsyslog
+    - name: Ensure journald does NOT forward to rsyslog
+      lineinfile:
+        path: /etc/systemd/journald.conf
+        regexp: '^#?ForwardToSyslog='
+        line: 'ForwardToSyslog=no'
+      notify: restart journald
+
+    # 4.2.2.6 Ensure journald log rotation is configured per site policy
+    - name: Configure journald log rotation size
+      lineinfile:
+        path: /etc/systemd/journald.conf
+        regexp: '^#?SystemMaxUse='
+        line: 'SystemMaxUse=500M'
+      notify: restart journald
+
+    # 4.2.2.7 Ensure journald default file permissions configured
+    - name: "Manual Check: journald default file permissions"
+      debug:
+        msg: "journald file permissions are managed by the service itself. Verify they are not overridden by a drop-in file."
+
+    # 4.2.3 Ensure all logfiles have appropriate permissions and ownership
+    - name: Find log files with incorrect permissions
+      command: find /var/log -type f -perm /g+wx,o+rwx
+      register: insecure_log_files
+      changed_when: false
+
+    - name: Correct insecure log file permissions
+      file:
+        path: "{{ item }}"
+        mode: 'g-wx,o-rwx'
+      with_items: "{{ insecure_log_files.stdout_lines }}"
+
+    # 4.3 Ensure logrotate is configured
+    - name: Ensure logrotate is installed
+      package:
+        name: logrotate
+        state: present
+
+    - name: Verify logrotate configuration
+      stat:
+        path: /etc/logrotate.conf
+      register: logrotate_conf
+      failed_when: not logrotate_conf.stat.exists
+
+    ### CRON PERMISSIONS ###
+    # 5.1.2 Ensure permissions on /etc/crontab are configured
+    - name: Set permissions on /etc/crontab
+      file:
+        path: /etc/crontab
+        owner: root
+        group: root
+        mode: '0600'
+
+    # 5.1.3 - 5.1.7 Ensure permissions on cron directories are configured
+    - name: Set permissions on cron directories
+      file:
+        path: "{{ item }}"
+        owner: root
+        group: root
+        mode: '0700'
+      loop:
+        - /etc/cron.hourly
+        - /etc/cron.daily
+        - /etc/cron.weekly
+        - /etc/cron.monthly
+        - /etc/cron.d
+
+    # 5.1.8 Ensure cron is restricted to authorized users
+    - name: Restrict cron usage
+      file:
+        path: /etc/cron.deny
+        state: absent
+    - file:
+        path: /etc/cron.allow
+        state: touch
+        owner: root
+        group: root
+        mode: '0640'
+
+    # 5.1.9 Ensure at is restricted to authorized users
+    - name: Restrict at usage
+      file:
+        path: /etc/at.deny
+        state: absent
+    - file:
+        path: /etc/at.allow
+        state: touch
+        owner: root
+        group: root
+        mode: '0640'
+
+    ### SSH HARDENING ###
+    # 5.2.1 Ensure permissions on /etc/ssh/sshd_config are configured
+    - name: Set permissions for sshd_config
+      file:
+        path: /etc/ssh/sshd_config
+        owner: root
+        group: root
+        mode: '0600'
+
+    # 5.2.2 Ensure permissions on SSH private host key files are configured
+    - name: Find SSH private host keys
+      find:
+        paths: /etc/ssh
+        patterns: "ssh_host_*_key"
+      register: ssh_private_keys
+
+    - name: Set permissions on SSH private keys
+      file:
+        path: "{{ item.path }}"
+        owner: root
+        group: root
+        mode: '0600'
+      with_items: "{{ ssh_private_keys.files }}"
+
+    # 5.2.3 Ensure permissions on SSH public host key files are configured
+    - name: Find SSH public host keys
+      find:
+        paths: /etc/ssh
+        patterns: "ssh_host_*_key.pub"
+      register: ssh_public_keys
+
+    - name: Set permissions on SSH public keys
+      file:
+        path: "{{ item.path }}"
+        owner: root
+        group: root
+        mode: '0644'
+      with_items: "{{ ssh_public_keys.files }}"
+
+    # 5.2.4 Ensure SSH access is limited
+    - name: Ensure SSH access is limited (AllowUsers)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?AllowUsers'
+        line: 'AllowUsers gihon ren1'
+        state: present
+      notify: restart sshd
+
+    # 5.2.5 Ensure SSH LogLevel is appropriate
+    - name: Set SSH LogLevel to INFO
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?LogLevel'
+        line: 'LogLevel INFO'
+      notify: restart sshd
+
+    # 5.2.8 Ensure SSH HostbasedAuthentication is disabled
+    - name: Disable SSH HostbasedAuthentication
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?HostbasedAuthentication'
+        line: 'HostbasedAuthentication no'
+      notify: restart sshd
+
+    # 5.2.10 Ensure SSH PermitUserEnvironment is disabled
+    - name: Disable SSH PermitUserEnvironment
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitUserEnvironment'
+        line: 'PermitUserEnvironment no'
+      notify: restart sshd
+
+    # This block covers multiple SSH recommendations:
+    # 5.2.7 Ensure SSH root login is disabled
+    # 5.2.9 Ensure SSH PermitEmptyPasswords is disabled (by disallowing password auth)
+    - name: Harden SSH configuration
+      blockinfile:
+        path: /etc/ssh/sshd_config
+        block: |
+          PermitRootLogin no
+          PasswordAuthentication no
+          ChallengeResponseAuthentication no
+          UsePAM yes
+          ClientAliveInterval 300
+          ClientAliveCountMax 2
+
+    # This block covers multiple SSH recommendations:
+    # 5.2.13 Ensure SSH AllowTcpForwarding is disabled
+    # 5.2.17 Ensure SSH MaxStartups is configured
+    - name: Configure additional SSH settings
+      blockinfile:
+        path: /etc/ssh/sshd_config
+        block: |
+          AllowTcpForwarding no
+          MaxStartups 10:30:60
+
+    - name: Validate sshd_config before restarting SSH
+      command: sshd -t
+      register: sshd_check
+      failed_when: sshd_check.rc != 0
+
+    - name: Restart SSH service (only if config is valid)
+      service:
+        name: sshd
+        state: restarted
+      when: sshd_check.rc == 0
+
+    ### SUDO / SU ###
+    # 5.3.1 Ensure sudo is installed
+    - name: Ensure sudo package is installed
+      package:
+        name: sudo
+        state: present
+
+    # 5.3.2 Ensure sudo commands use pty
+    - name: Ensure sudo uses PTY
+      lineinfile:
+        path: /etc/sudoers
+        regexp: "^Defaults[ ]+!use_pty"
+        line: "Defaults use_pty"
+        validate: '/usr/sbin/visudo -csf %s'
+
+    # 5.3.4 Ensure users must provide password for escalation
+    - name: Ensure sudo requires password
+      lineinfile:
+        path: /etc/sudoers
+        regexp: '^%wheel ALL=\(ALL\) NOPASSWD: ALL'
+        line: "# %wheel ALL=(ALL) NOPASSWD: ALL"
+        validate: '/usr/sbin/visudo -csf %s'
+    
+    # 5.3.5 Ensure re-authentication for privilege escalation is not disabled globally
+    - name: Ensure re-authentication for sudo is not disabled
+      lineinfile:
+        path: /etc/sudoers
+        regexp: 'timestamp_timeout=-1'
+        state: absent
+        validate: '/usr/sbin/visudo -csf %s'
+
+    # 5.3.6 Ensure sudo authentication timeout is configured correctly
+    - name: Set sudo authentication timeout
+      lineinfile:
+        path: /etc/sudoers
+        regexp: 'timestamp_timeout'
+        line: 'Defaults        timestamp_timeout=15'
+        validate: '/usr/sbin/visudo -csf %s'
+
+    # 5.3.7 Ensure access to the su command is restricted
+    - name: Restrict access to su command
+      lineinfile:
+        path: /etc/pam.d/su
+        insertafter: EOF
+        line: "auth required pam_wheel.so use_uid"
+
+    ### PAM / PASSWORD POLICIES ###
+    # 5.4.2 Ensure authselect includes with-faillock
+    ### PAM / PASSWORD POLICIES ###
+    - name: Select authselect profile
+      command: authselect select sssd with-faillock --force
+      args:
+        creates: /etc/authselect/authselect.conf
+
+    - name: Check current authselect profile
+      command: authselect current
+      register: authselect_status
+      changed_when: false
+      failed_when: false  # avoid fatal if authselect isn't configured yet
+
+    - name: Enable with-faillock feature
+      command: authselect enable-feature with-faillock --force
+      when: "'with-faillock' not in authselect_status.stdout"
+
+
+
+    # 5.5.1 Ensure password creation requirements are configured
+    - name: Set password complexity
+      lineinfile:
+        path: /etc/security/pwquality.conf
+        regexp: "^minlen"
+        line: "minlen = 14"
+
+    # 5.5.2 Ensure lockout for failed password attempts is configured
+    - name: Lockout after failed password attempts
+      lineinfile:
+        path: /etc/security/faillock.conf
+        regexp: "^deny"
+        line: "deny = 5"
+
+    # 5.5.3 Ensure password reuse is limited
+    - name: Limit password reuse
+      lineinfile:
+        path: /etc/pam.d/system-auth
+        regexp: 'pam_pwquality.so'
+        line: 'password requisite pam_pwquality.so try_first_pass local_users_only retry=3 authtok_type= remember=5'
+
+    # 5.6.1.1 Ensure password expiration is 365 days or less
+    - name: Configure password expiration to 365 days
+      lineinfile:
+        path: /etc/login.defs
+        regexp: '^PASS_MAX_DAYS'
+        line: 'PASS_MAX_DAYS	365'
+
+    # 5.6.1.2 Ensure minimum days between password changes is configured
+    - name: Configure minimum days between password changes
+      lineinfile:
+        path: /etc/login.defs
+        regexp: '^PASS_MIN_DAYS'
+        line: 'PASS_MIN_DAYS	1'
+
+    # 5.6.1.3 Ensure password expiration warning days is 7 or more
+    - name: Configure password expiration warning days
+      lineinfile:
+        path: /etc/login.defs
+        regexp: '^PASS_WARN_AGE'
+        line: 'PASS_WARN_AGE	7'
+
+    # 5.6.1.4 Ensure inactive password lock is 30 days or less
+    - name: Configure inactive password lock
+      user:
+        name: "{{ item.user }}"
+        inactive: 30
+      with_items: "{{ users_to_configure }}"
+      vars:
+        users_to_configure: [] # Define your list of users here
+
+    # 5.6.1.5 Ensure all users last password change date is in the past
+    - name: "Manual Check: Ensure users change password on next login"
+      debug:
+        msg: "Run 'chage -d 0 <username>' for each user to force password change on next login."
+
+    # 5.6.2 Ensure system accounts are secured
+    - name: Find system accounts
+      shell: "awk -F: '($3<1000 && $1!=\"root\" && $1!=\"sync\" && $1!=\"shutdown\" && $1!=\"halt\" && $7!=\"/sbin/nologin\" && $7!=\"/bin/false\") {print $1}' /etc/passwd"
+      register: system_accounts
+      changed_when: false
+
+    - name: Lock system accounts
+      user:
+        name: "{{ item }}"
+        shell: /sbin/nologin
+        password_lock: yes
+      loop: "{{ system_accounts.stdout_lines }}"
+
+
+    # 5.6.3 Ensure default user shell timeout is 900 seconds or less
+    - name: Set shell timeout
+      copy:
+        dest: /etc/profile.d/cis-shell-timeout.sh
+        content: "TMOUT=900\nreadonly TMOUT\nexport TMOUT"
+        mode: '0644'
+
+    # 5.6.4 Ensure default group for the root account is GID 0
+    - name: Set root account GID to 0
+      user:
+        name: root
+        group: 0
+
+    # 5.6.5 Ensure default user umask is 027 or more restrictive
+    - name: Set default umask
+      lineinfile:
+        path: /etc/login.defs
+        regexp: '^UMASK'
+        line: 'UMASK           027'
+
+    # 5.6.6 Ensure root password is set
+    - name: Check if root password is set
+      shell: "getent shadow root | awk -F: '{print $2}'"
+      register: root_password
+      failed_when: "root_password.stdout == '' or '!' in root_password.stdout or '*' in root_password.stdout"
+
+    # 6.1.1 to 6.1.8 - File permissions
+    - name: Set permissions on system files
+      file:
+        path: "{{ item.path }}"
+        mode: "{{ item.mode }}"
+        owner: root
+        group: "{{ item.group | default('root') }}"
+      loop:
+        - { path: '/etc/passwd', mode: '0644' }
+        - { path: '/etc/passwd-', mode: '0600' }
+        - { path: '/etc/group', mode: '0644' }
+        - { path: '/etc/group-', mode: '0600' }
+        - { path: '/etc/shadow', mode: '0000' }
+        - { path: '/etc/shadow-', mode: '0000' }
+        - { path: '/etc/gshadow', mode: '0000' }
+        - { path: '/etc/gshadow-', mode: '0000' }
+
+    # 6.1.9 Ensure no world writable files exist
+    - name: Find world writable files
+      command: "find / -xdev -type f -perm -0002"
+      register: world_writable_files
+      changed_when: false
+
+    - name: "Audit: World writable files found"
+      debug:
+        msg: "Found world writable files: {{ world_writable_files.stdout_lines }}"
+      when: world_writable_files.stdout != ""
+
+    # 6.1.10 Ensure no unowned files or directories exist
+    - name: Find unowned files or directories
+      command: "find / -xdev -nouser"
+      register: unowned_files
+      changed_when: false
+
+    - name: "Audit: Unowned files found"
+      debug:
+        msg: "Found unowned files: {{ unowned_files.stdout_lines }}"
+      when: unowned_files.stdout != ""
+
+    # 6.1.11 Ensure no ungrouped files or directories exist
+    - name: Find ungrouped files or directories
+      command: "find / -xdev -nogroup"
+      register: ungrouped_files
+      changed_when: false
+
+    - name: "Audit: Ungrouped files found"
+      debug:
+        msg: "Found ungrouped files: {{ ungrouped_files.stdout_lines }}"
+      when: ungrouped_files.stdout != ""
+
+    # 6.1.12 Ensure sticky bit is set on all world-writable directories
+    - name: Find world-writable directories without sticky bit
+      command: "find / -xdev -type d \\( -perm -0002 -a ! -perm -1000 \\)"
+      register: sticky_bit_dirs
+      changed_when: false
+
+    - name: Apply sticky bit to world-writable directories
+      file:
+        path: "{{ item }}"
+        mode: o+t
+      with_items: "{{ sticky_bit_dirs.stdout_lines }}"
+
+    # 6.1.13 Audit SUID executables
+    # 6.1.14 Audit SGID executables
+    - name: "Audit: SUID/SGID system executables"
+      debug:
+        msg: "Run 'find / -xdev -type f -perm /6000' to audit SUID/SGID files."
+
+    # 6.1.15 Audit system file permissions
+    - name: "Audit: System file permissions"
+      debug:
+        msg: "This is a broad requirement. Specific file permission tasks are handled individually."
+
+    # 6.2.2 Ensure /etc/shadow password fields are not empty
+    - name: Check for empty password fields in /etc/shadow
+      shell: "awk -F: '($2 == \"\") {print $1}' /etc/shadow"
+      register: empty_passwords
+      failed_when: empty_passwords.stdout != ""
+
+    # 6.2.10 to 6.2.16 - User home directory configuration
+    - name: Get list of local interactive users
+      shell: "awk -F: '($3 >= 1000 && $1 != \"nfsnobody\") {print $1}' /etc/passwd"
+      register: local_users
+
+    - name: Set permissions on user home directories
+      file:
+        path: "/home/{{ item }}"
+        state: directory
+        mode: '0750'
+        owner: "{{ item }}"
+        group: "{{ item }}"
+      with_items: "{{ local_users.stdout_lines }}"
+
+    - name: Check for and remove .rhosts files
+      find:
+        paths: "/home/"
+        patterns: ".rhosts"
+        contains: '.*'
+      register: rhosts_files
+
+    - name: Remove .rhosts files
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      with_items: "{{ rhosts_files.files }}"
+
+  handlers:
+    - name: restart sshd
+      service:
+        name: sshd
+        state: restarted
+
+    - name: restart journald
+      service:
+        name: systemd-journald
+        state: restarted
+
+    - name: restart rsyslog
+      service:
+        name: rsyslog
+        state: restarted
+
+    - name: reload firewalld
+      service:
+        name: firewalld
+        state: reloaded
+
+    - name: update grub config
+      command: grub2-mkconfig -o /boot/grub2/grub.cfg
+
+    - name: update dconf
+      command: dconf update
+```
+
+##Playbook Hardening Apache 2.4
+```YAML
+---
+- name: Apache Web Server Hardening Playbook
+  hosts: all
+  become: yes
+
+  tasks:
+    ### INSTALLATION ###
+
+    - name: 1.3 Ensure Apache Is Installed From the Appropriate Binaries
+      ansible.builtin.package:
+        name: httpd
+        state: present
+
+    ### MINIMIZE APACHE MODULES ###
+
+    - name: 2.2 Ensure the Log Config Module Is Enabled
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf.modules.d/00-base.conf
+        regexp: '^#LoadModule log_config_module'
+        line: 'LoadModule log_config_module modules/mod_log_config.so'
+        backrefs: yes
+
+    - name: Disable unnecessary Apache modules
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf.modules.d/00-base.conf
+        regexp: "^LoadModule {{ item }}"
+        line: "#LoadModule {{ item }}"
+      loop:
+        - autoindex_module
+        - status_module
+        - proxy_module
+
+    ### PRINCIPLES, PERMISSIONS & OWNERSHIP ###
+
+    - name: Ensure Apache runs as non-root user (apache)
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "^User"
+        line: "User apache"
+
+    - name: Disable shell access for apache user
+      ansible.builtin.user:
+        name: apache
+        shell: /sbin/nologin
+
+    - name: 3.3 Ensure the Apache User Account Is Locked
+      ansible.builtin.command: passwd -l apache
+      changed_when: false
+
+    - name: 3.5 & 3.6 & 3.11 Set correct ownership and permissions for Apache config directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        owner: root
+        group: root
+        mode: "0750"
+        recurse: yes
+      loop:
+        - /etc/httpd/conf
+        - /etc/httpd/conf.d
+        - /etc/httpd/conf.modules.d
+
+    - name: 3.7 & 3.8 & 3.9 & 3.10 Check for presence of Apache runtime files
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+      loop:
+        - { path: '/var/run/httpd/htcacheclean', mode: '0700' }
+        - { path: '/var/run/httpd.pid', mode: '0644' }
+        - { path: '/var/run/httpd/', mode: '0755' }
+      register: apache_runtime_files
+      # This task will now have a 'results' list with stat info for each file
+
+    - name: Set permissions for Apache runtime files if they exist
+      ansible.builtin.file:
+        path: "{{ item.item.path }}" # Note the extra .item here due to the loop structure
+        owner: root
+        group: root
+        mode: "{{ item.item.mode }}"
+      loop: "{{ apache_runtime_files.results }}"
+      when: item.stat.exists # This is the crucial condition
+    - name: 3.12 Ensure Group Write Access for the Document Root is Restricted
+      ansible.builtin.file:
+        path: /var/www/html
+        owner: root
+        group: root
+        mode: "0750"
+        recurse: yes
+
+    - name: 3.13 Ensure Access to Special Purpose Application Writable Directories is Properly Restricted
+      ansible.builtin.debug:
+        msg: "MANUAL STEP: If application requires writable directories, ensure they are outside the DocumentRoot and have strict permissions."
+
+    ### APACHE ACCESS CONTROL ###
+    - name: 4.1 & 4.3 Ensure Access to OS Root Directory Is Denied By Default
+      ansible.builtin.blockinfile:
+        path: /etc/httpd/conf/httpd.conf
+        marker: "# {mark} CIS 4.1 START"
+        block: |
+          <Directory />
+              AllowOverride None
+              Require all denied
+          </Directory>
+
+    - name: 4.2 & 4.4 Ensure Appropriate Access to Web Content Is Allowed
+      ansible.builtin.blockinfile:
+        path: /etc/httpd/conf/httpd.conf
+        marker: "# {mark} CIS 4.2 START"
+        block: |
+          <Directory "/var/www/html">
+              Options None
+              AllowOverride None
+              Require all granted
+          </Directory>
+
+    ### MINIMIZE FEATURES, CONTENT, AND OPTIONS ###
+
+    - name: 5.1, 5.2, 5.3 Ensure Options are Restricted
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "Options Indexes FollowSymLinks"
+        line: "Options -Indexes -FollowSymLinks -Includes"
+
+    - name: Disable TRACE method
+      ansible.builtin.blockinfile:
+        path: /etc/httpd/conf/httpd.conf
+        marker: "# {mark} CIS TraceEnable START"
+        block: |
+          TraceEnable off
+
+    - name: Deny access to dotfiles
+      ansible.builtin.blockinfile:
+        path: /etc/httpd/conf/httpd.conf
+        marker: "# {mark} CIS Dotfiles START"
+        block: |
+          <FilesMatch "^\.">
+              Require all denied
+          </FilesMatch>
+
+    ### OPERATIONS - LOGGING, MONITORING & MAINTENANCE ###
+
+    - name: 6.1 Ensure the Error Log Filename and Severity Level Are Configured Correctly
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "^LogLevel"
+        line: "LogLevel warn"
+
+    - name: 6.2 Ensure a Syslog Facility Is Configured for Error Logging
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "^ErrorLog"
+        line: "ErrorLog syslog:local1"
+
+    - name: 6.3 Ensure the Server Access Log Is Configured Correctly
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf.d/ssl.conf
+        regexp: "CustomLog logs/ssl_request_log"
+        line: "CustomLog logs/ssl_request_log \"%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \\\"%r\\\" %b\""
+      ignore_errors: yes
+
+    - name: 6.4 Ensure Log Storage and Rotation Is Configured Correctly
+      ansible.builtin.copy:
+        dest: /etc/logrotate.d/httpd
+        content: |
+          /var/log/httpd/*log {
+              weekly
+              missingok
+              rotate 4
+              compress
+              delaycompress
+              notifempty
+              create 640 root adm
+              sharedscripts
+              postrotate
+                  /bin/systemctl reload httpd > /dev/null 2>/dev/null || true
+              endscript
+          }
+
+    - name: 6.5 Ensure Applicable Patches Are Applied
+      ansible.builtin.package:
+        name: httpd
+        state: latest
+
+    - name: 6.6 Ensure ModSecurity Is Installed and Enabled
+      ansible.builtin.package:
+        name: mod_security
+        state: present
+
+    - name: 6.7 Ensure the OWASP ModSecurity Core Rule Set Is Installed and Enabled
+      ansible.builtin.package:
+        name: mod_security_crs
+        state: present
+
+    ### INFORMATION LEAKAGE ###
+
+    - name: 8.1 Ensure ServerTokens is Set to 'Prod' or 'ProductOnly'
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "^ServerTokens"
+        line: "ServerTokens Prod"
+        insertafter: EOF
+
+    - name: Set ServerSignature to Off
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "^ServerSignature"
+        line: "ServerSignature Off"
+        insertafter: EOF
+
+    - name: 8.4 Ensure ETag Response Header Fields Do Not Include Inodes
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "^FileETag"
+        line: "FileETag MTime Size"
+        insertafter: EOF
+
+    ### DOS MITIGATION ###
+
+    - name: 9.5 & 9.6 Reduce Apache Timeout
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "^Timeout"
+        line: "Timeout 20"
+
+    - name: 9.2 Ensure KeepAlive Is Enabled
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "^KeepAlive "
+        line: "KeepAlive On"
+
+    - name: 9.3 Ensure MaxKeepAliveRequests is Set
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "^MaxKeepAliveRequests"
+        line: "MaxKeepAliveRequests 100"
+
+    - name: 9.4 Ensure KeepAliveTimeout is Set
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "^KeepAliveTimeout"
+        line: "KeepAliveTimeout 10"
+
+    ### REQUEST LIMITS ###
+
+    - name: 10.1, 10.2, 10.3, 10.4 Limit request sizes
+      ansible.builtin.blockinfile:
+        path: /etc/httpd/conf/httpd.conf
+        marker: "# {mark} CIS Request Limits START"
+        block: |
+          LimitRequestLine 8190
+          LimitRequestFields 100
+          LimitRequestFieldSize 1024
+          LimitRequestBody 102400
+
+    ### SELINUX ###
+
+    - name: 11.1 Ensure SELinux Is Enabled in Enforcing Mode
+      ansible.posix.selinux:
+        policy: targeted
+        state: enforcing
+
+    - name: 11.2 Ensure Apache Processes Run in the httpd_t Confined Context
+      ansible.builtin.command: ps -eZ | grep httpd | grep -vq httpd_t
+      register: unconfined_httpd
+      failed_when: unconfined_httpd.rc == 0
+      changed_when: false
+
+    - name: 11.3 Ensure the httpd_t Type is Not in Permissive Mode
+      ansible.builtin.command: semanage permissive -l | grep httpd_t
+      register: permissive_httpd
+      failed_when: permissive_httpd.rc == 0
+      changed_when: false
+```
