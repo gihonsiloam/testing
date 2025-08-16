@@ -1,6 +1,6 @@
 # Artifact Skripsi
 
-## Playbook Hardening Rocky Linux 9
+## **Playbook Hardening Rocky Linux 9**
 
 ```YAML
 - name: Rocky Linux System Hardening Playbook
@@ -1150,7 +1150,7 @@
       command: dconf update
 ```
 
-##Playbook Hardening Apache 2.4
+## **Playbook Hardening Apache 2.4**
 ```YAML
 ---
 - name: Apache Web Server Hardening Playbook
