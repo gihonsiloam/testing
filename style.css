@@ -86,3 +86,14 @@ body {
         padding: 20px;
     }
 }
+
+/*
+ * Style for the scrollable code block
+ */
+#long-code-block {
+    /* Set a maximum height. Adjust this value to your liking. */
+    max-height: 500px; 
+
+    /* Add a vertical scrollbar only when the content overflows. */
+    overflow-y: auto;
+}
