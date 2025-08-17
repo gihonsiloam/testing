@@ -1,0 +1,88 @@
+/* Basic Reset and Body Styles */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    line-height: 1.6;
+    background-color: #ffffff;
+    color: #333;
+}
+
+/* Main wrapper to create the two-column layout */
+.wrapper {
+    display: flex;
+    min-height: 100vh; /* Make sure it's at least the full height of the viewport */
+}
+
+/* Sidebar Styling */
+.sidebar {
+    flex: 0 0 260px; /* Sidebar will not grow or shrink, and has a fixed width of 260px */
+    background-color: #f8f9fa;
+    border-right: 2px solid #e9ecef;
+    padding: 20px;
+}
+
+.sidebar h2 {
+    margin-top: 0;
+    color: #000;
+}
+
+.sidebar ul {
+    list-style-type: none; /* Remove bullet points */
+    padding: 0;
+    margin: 0;
+}
+
+.sidebar ul li {
+    margin-bottom: 10px;
+}
+
+.sidebar ul li a {
+    text-decoration: none;
+    color: #007bff;
+    font-weight: 500;
+    display: block; /* Makes the whole area clickable */
+    padding: 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.sidebar ul li a:hover {
+    background-color: #e9ecef;
+    color: #0056b3;
+}
+
+/* Main Content Styling */
+.main-content {
+    flex-grow: 1; /* This makes the content area take up all the remaining space */
+    padding: 40px;
+    overflow-y: auto; /* Adds a scrollbar if content is too long */
+}
+
+.main-content h1, .main-content h2 {
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+/* Add some space between sections for readability */
+.main-content section {
+    margin-bottom: 40px;
+}
+
+/* --- For smaller screens (e.g., mobile phones) --- */
+@media (max-width: 768px) {
+    .wrapper {
+        flex-direction: column; /* Stack sidebar and content on top of each other */
+    }
+
+    .sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 2px solid #e9ecef;
+        flex-basis: auto; /* Reset the fixed width */
+    }
+    
+    .main-content {
+        padding: 20px;
+    }
+}
