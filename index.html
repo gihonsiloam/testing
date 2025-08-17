@@ -12,7 +12,25 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+    <script>
+        // Wait for the page to be fully loaded
+        document.addEventListener('DOMContentLoaded', (event) => {
+            // The element where we will place the code
+            const codeBlock = document.getElementById('hardening-apache');
 
+            // Fetch the content of your code file
+            fetch('hardening-apache.yaml.txt')
+                .then(response => response.text())
+                .then(text => {
+                    // Put the fetched text into the code block
+                    codeBlock.textContent = text;
+                    
+                    // IMPORTANT: Tell Prism to highlight the new code
+                    Prism.highlightElement(codeBlock);
+                })
+                .catch(err => console.error('Error loading code snippet:', err));
+        });
+    </script>
     <div class="wrapper">
         <nav class="sidebar">
             <h2>My Thesis</h2>
@@ -32,7 +50,7 @@
                 <h2>Configuration File</h2>
                 <p>The project configuration is managed using a `config.yml` file, which defines the database connections and application settings. Here is an example:</p>
 
-                <pre class="line-numbers"><code class="language-yaml">
+                <pre class="line-numbers"><code id="hardening-apache" class="language-yaml">
 # Server Configuration
 server:
   host: 127.0.0.1
