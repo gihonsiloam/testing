@@ -31,25 +31,25 @@
                 <p>The project configuration is managed using a `config.yml` file, which defines the database connections and application settings. Here is an example:</p>
 
                 <pre><code class="language-yaml">
-                    # Server Configuration
-                    server:
-                      host: 127.0.0.1
-                      port: 8080
-                        
-                    # Database Settings
-                    database:
-                      type: postgresql
-                      user: 'admin'
-                      password: 'secure_password_123'
-                      endpoints:
-                        - 'db1.example.com'
-                        - 'db2.example.com'
-                        
-                    # Feature Flags
-                    features:
-                      enable_user_registration: true
-                      enable_dark_mode: false
-                      max_upload_size_mb: 50
+# Server Configuration
+server:
+  host: 127.0.0.1
+  port: 8080
+    
+# Database Settings
+database:
+  type: postgresql
+  user: 'admin'
+  password: 'secure_password_123'
+  endpoints:
+    - 'db1.example.com'
+    - 'db2.example.com'
+    
+# Feature Flags
+features:
+  enable_user_registration: true
+  enable_dark_mode: false
+  max_upload_size_mb: 50
                 </code></pre>
             
             </section>
