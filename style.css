@@ -91,9 +91,11 @@ body {
  * Style for the scrollable code block
  */
 #long-code-block {
-    /* Set a maximum height. Adjust this value to your liking. */
-    max-height: 500px; 
+    /* This controls the top-to-bottom size */
+    max-height: 500px;
+    overflow-y: auto; /* The vertical scrollbar */
 
-    /* Add a vertical scrollbar only when the content overflows. */
-    overflow-y: auto;
+    /* ADD THESE TWO LINES for left-to-right size */
+    max-width: 750px;   /* Set a maximum width. Adjust as you like. */
+    overflow-x: auto;   /* The horizontal scrollbar for long lines */
 }
