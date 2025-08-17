@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Thesis Documentation</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
 
     <div class="wrapper">
         <nav class="sidebar">
@@ -23,6 +26,33 @@
 
         <main class="main-content">
             <h1>Thesis Documentation</h1>
+            <section id="configuration">
+                <h2>Configuration File</h2>
+                <p>The project configuration is managed using a `config.yml` file, which defines the database connections and application settings. Here is an example:</p>
+
+                <pre><code class="language-yaml">
+                    # Server Configuration
+                    server:
+                      host: 127.0.0.1
+                      port: 8080
+                        
+                    # Database Settings
+                    database:
+                      type: postgresql
+                      user: 'admin'
+                      password: 'secure_password_123'
+                      endpoints:
+                        - 'db1.example.com'
+                        - 'db2.example.com'
+                        
+                    # Feature Flags
+                    features:
+                      enable_user_registration: true
+                      enable_dark_mode: false
+                      max_upload_size_mb: 50
+                </code></pre>
+            
+            </section>
             
             <section id="introduction">
                 <h2>Introduction</h2>
